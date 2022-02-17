@@ -8,6 +8,7 @@ in pkgs.mkShell {
     pkgs.python38Packages.pillow
     pkgs.python38Packages.pytorch
     pkgs.python38Packages.torchvision
+    pkgs.python38Packages.tqdm
     pkgs.python38Packages.numpy
   ];
   shellHook = ''
