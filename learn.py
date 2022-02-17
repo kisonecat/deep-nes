@@ -48,6 +48,8 @@ class NintendoDataset(IterableDataset):
         return self
 
     def __next__(self):
+        self.env.ram[0x0770] = 1
+
         memory = self.env.ram
         memory = np.reshape( np.unpackbits(memory), (2048*8) )
         memory = memory.astype(float)
@@ -76,14 +78,15 @@ class NintendoDataset(IterableDataset):
             self.joypad = self.joypad ^ 192
             
         lives = self.env.ram[0x75A]
+
         if lives < 2:
             self.reset_game()
 
-        if self.done == True:
-            self.env.reset()
-            
-        _, _, self.done, _ = self.env.step(self.joypad)
+        for _ in range(10):
+            if self.done == True:
+                self.env.reset()
 
+            _, _, self.done, _ = self.env.step(self.joypad)
 
         return memory, image
 
@@ -101,22 +104,11 @@ def init_weights(net, init_type='normal', scaling=0.02):
     print('initialize network with %s' % init_type)
     net.apply(init_func) 
 
-batch_size = 48 
+batch_size = 64 
 
 dataset = NintendoDataset()
 
 train_dl = DataLoader(dataset, batch_size)
-
-# index = 0 
-# for m,image in train_dl:
-#     x = image.cpu().detach().numpy()[0]
-#     x = (x * 255).astype(np.uint8)
-#     x = Image.fromarray(x)
-#     x.save('output%03d.png' % index)
-#     index = index + 1
-#     if index > 100:
-#         break
-# sys.exit()
 
 if torch.cuda.is_available():
     print('cuda is available')
@@ -133,7 +125,9 @@ discriminator = Discriminator().to(device)
 def generator_loss(generated_image, target_img, G, real_target):
     gen_loss = adversarial_loss(G, real_target)
     l1_l = l1_loss(generated_image, target_img)
-    gen_total_loss = gen_loss + (100 * l1_l)
+    lx = l1_loss(torch.gradient(generated_image,dim=1)[0], torch.gradient(target_img,dim=1)[0])
+    ly = l1_loss(torch.gradient(generated_image,dim=2)[0], torch.gradient(target_img,dim=2)[0])
+    gen_total_loss = gen_loss + (100 * l1_l) + (100 * lx) + (100 * ly)
     return gen_total_loss
 
 def discriminator_loss(output, label):
@@ -146,16 +140,16 @@ b2 = 0.999
 G_optimizer = optim.Adam(generator.parameters(), lr=lr, betas=(b1, b2))
 D_optimizer = optim.Adam(discriminator.parameters(), lr=lr, betas=(b1, b2))
 
-start_epoch = 1
+start_epoch = 236 
 
-if False:
+if True:
     print('loading model from epoch',start_epoch)
     generator.load_state_dict(torch.load('generator%03d.pt' % start_epoch))
     generator.eval()
     discriminator.load_state_dict(torch.load('discriminator%03d.pt' % start_epoch))
     discriminator.eval()
 
-num_epochs = 2000
+num_epochs = 20000
 D_loss_plot, G_loss_plot = [], []
 for epoch in range(start_epoch, start_epoch + num_epochs): 
     print('epoch',epoch)
